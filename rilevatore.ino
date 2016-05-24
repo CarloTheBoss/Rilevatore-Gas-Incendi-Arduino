@@ -1,15 +1,39 @@
 #include <Time.h>
 #include <math.h>
 #include "DHT.h"
+#include <LiquidCrystal.h>
 
-// Alarm sound
-#define ALARM 0
+// Seconds to wait between relevations:
+#define INTERVAL_TIME 10
+
+// Gas calibration parameters
+#define CALIBRATION_INTERVAL 0.5
+#define CALIBRATION_READS 50
+
+// Gas standard usage parameters
+#define GAS_READ_INTERVAL 0.05
+#define GAS_READS 100
+
+// LCD display:
+// Order of pins: RS, E, D4, D5, D6, D7
+LiquidCrystal lcd(10, 11, 9, 6, 5, 16);
+
+// Gas to print concentration on lcd
+#define GAS_TO_CHECK "CO"
+
+// Check flame value
+#define CHECK_FLAME 100
+
+// Alarm stuff
+#define ALARM_ON 0
+#define ALARM_RED_FREQ 3100
+#define ALARM_YELLOW_FREQ 570
 
 // "Health" values:
 #define TEMP_GREEN_MAX 25
 #define TEMP_YELLOW_MAX 35
 
-int gas_green_max[] = {15, -1, 5000, -1, -1, 1000, 1000}; // -1 = not set
+int gas_green_max[] = {16, -1, 5000, -1, -1, 1000, 1000}; // -1 = not set
 int gas_yellow_max[] = {40, -1, 10000, -1, -1, 1800, 1800};
 
 // Pins:
@@ -50,27 +74,32 @@ float GetResistance(int n) { return ( (float)RL_VALUE * (1023 - n)/n ); }
 void GasCalibration() {
   digitalWrite(blue_pin, HIGH);
   Serial.println("Calibrating gas sensor...");
+  lcd.print("Calibrating...");
+  
   Ro =0;
-  for(int i=0;i<50;i++) {
+  for(int i=0;i<CALIBRATION_READS;i++) {
     Ro += GetResistance( analogRead(gas_pin) );
-    delay(500);
+    delay(CALIBRATION_INTERVAL * 1000);
   }
-  Ro /= 1000.0;
+  Ro /= CALIBRATION_READS;
   Ro /= RO_CLEAN;
   Serial.println("Gas sensor calibrated!!!");
   digitalWrite(blue_pin, LOW);
+  lcd.print("Done!");
 }
 
 float GasRead() {
   float ris=0;
-  for(int i=0;i<50;i++) {
+  for(int i=0;i<GAS_READS;i++) {
     ris += GetResistance( analogRead(gas_pin) );
-    delay(50);
+    delay(GAS_READ_INTERVAL * 1000);
   }
-  return ris/1000;
+  return ris/GAS_READS;
 }
 
 void reset() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
   digitalWrite(green_pin, LOW);
   digitalWrite(yellow_pin, LOW);
   digitalWrite(red_pin, LOW);
@@ -81,6 +110,7 @@ void reset() {
 void setup() {
   Serial.begin(9600);
   
+  lcd.begin(16, 2);
   temperature_sensor.begin();
   pinMode(flame_pin, INPUT);
   pinMode(gas_pin, INPUT);
@@ -108,7 +138,10 @@ void loop() {
     if(digitalRead(button_pin)==HIGH) GasCalibration();
   
   bool safe_place = true, not_so_safe = false, get_out_now = false;
+  
   digitalWrite(blue_pin, HIGH);
+  lcd.clear();
+  lcd.setCursor(0, 0);
   
   // Temperature:
     float h = temperature_sensor.readHumidity();
@@ -124,12 +157,17 @@ void loop() {
         Serial.print(t);
         Serial.println(" *C");
         
+        lcd.print("Temp: ");
+        lcd.print(t);
+        lcd.print(" *C");
+        
         if(t > TEMP_GREEN_MAX && t <= TEMP_YELLOW_MAX) not_so_safe=true;
         else if(t > TEMP_YELLOW_MAX) get_out_now = true;
     }
     delay(10);
     
   // Gas:
+    lcd.setCursor(1, 1);
     float Rs = GasRead();
     float y = log10(Rs / Ro);
     for(int i=0;i<7;i++) {
@@ -138,6 +176,12 @@ void loop() {
       float ppm = pow(10, (y - q[i]) / angular_coeff[i]);
       Serial.print(ppm);
       Serial.println(" ppm");
+      if(gas_name[i] == GAS_TO_CHECK) {
+        lcd.print(GAS_TO_CHECK);
+        lcd.print(": ");
+        lcd.print(ppm);
+        lcd.print(" ppm");
+      }
       
       if(gas_green_max[i]==-1) continue;
       if(ppm > gas_green_max[i] && ppm <= gas_yellow_max[i]) not_so_safe = true;
@@ -146,25 +190,26 @@ void loop() {
     delay(10);
   
   // Flame:
-    
-    if(analogRead(flame_pin) <= 100) {
+    int flame_value = analogRead(flame_pin);
+    if(flame_value <= CHECK_FLAME) {
       get_out_now = true;
-      Serial.println("Flame");
+      Serial.print("Flame: ");
     }
-    else Serial.println("No flame");
+    else Serial.print("No flame: ");
+    Serial.println(flame_value);
     
   digitalWrite(blue_pin, LOW);
   
   if(get_out_now) {
     digitalWrite(red_pin, HIGH);
-    if(ALARM) tone(piezo_pin, 3100, 10000);
+    if(ALARM_ON) tone(piezo_pin, ALARM_RED_FREQ, INTERVAL_TIME*1000);
   }
   else if(not_so_safe) {
     digitalWrite(yellow_pin, HIGH);
-    if(ALARM) tone(piezo_pin, 570, 1500);
+    if(ALARM_ON) tone(piezo_pin, ALARM_YELLOW_FREQ, (INTERVAL_TIME / 6.0) * 1000);
   }
   else digitalWrite(green_pin, HIGH);
   
-  delay(10000);
+  delay(INTERVAL_TIME * 1000);
 }
 

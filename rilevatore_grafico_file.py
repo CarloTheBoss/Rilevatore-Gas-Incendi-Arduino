@@ -14,7 +14,7 @@ gas_names = ["CO", "Smoke", "CH4", "Alcohol", "H2", "Propane", "LPG"]
 file_path = "rilevatore.log"
 
 def NotADate(s):
-	return (len(s)==0 or "emperature" in s or "ppm" in s or "flame" in s)
+	return (len(s)==0 or "emperature" in s or "ppm" in s or "lame" in s)
 
 # Points to plot:
 x = []
@@ -25,14 +25,13 @@ ygas = [ [] for j in range(7) ]
 righe=[]
 with open(file_path, "r") as f:
 	righe = [i.replace('\n', '') for i in f.readlines() \
-	           if "calibrat" not in i]
+	           if "alibrat" not in i]
 
 	
 i=15 # first lines are random
 first_date=""
 
 while i+9 < len(righe):
-	
 	# random lines happen:
 	if NotADate(righe[i]):
 		i+=1
@@ -53,13 +52,14 @@ while i+9 < len(righe):
 	i+=1
 	
 	# Gases:
+	
 	for t in range(len(gas_names)):
 		val = righe[i].split(' ')[2]
 		ygas[t].append( float(val) )
 		i+=1
 	
-	# Flame
-	i += 2
+	# Flame 
+	i += 1
 
 can_print = (len(x) == len(ytemp) and len(x)==len(yhum) and len(x)>0)
 for j in range(7): can_print = can_print and (len(x)==len(ygas[j]))
@@ -79,7 +79,7 @@ else:
 	plt.axis([0, x[ len(x) - 1], 0 ,max( max(ytemp), max(yhum) )+10 ]) 
 
 
-	# Gases graphic:
+	# Gas graphic:
 	plt.subplot(212)
 	plt.plot(x, ygas[0], 'b', x, ygas[1], 'g', x, ygas[2], 'r',\
 			 x, ygas[3], 'y', x, ygas[4], 'k', x, ygas[5], 'c', \
